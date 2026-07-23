@@ -30,11 +30,14 @@ Do not skip a version's gate to start the next. If a gate fails, the fix happens
 - [x] `sw_reference.hpp` / `sw_reference.cpp` — scalar Gotoh affine-gap SW, score-only
 - [x] `timing.hpp` — Timer, GCUPS helper
 - [x] `baseline_main.cpp` — CLI harness, optional Parasail cross-check via `METALSW_USE_PARASAIL`
-- [x] `data/query.fasta`, `data/db_small.fasta` — verified test set
+- [x] `data/generate_test_set.py`, `data/query.fasta`, `data/db_small.fasta` — seeded, reproducible test set (seed=42)
 - [x] `CMakeLists.txt` — builds `metalsw_baseline`, `if(APPLE)` stub for GPU target
-- [x] Compiled and run: scores confirmed correct (db01=db05=291, db02=287, db03=278, db04=192, db06=142, db12=99, rest ≤22)
+- [x] `.devcontainer/` — Ubuntu 24.04 container (build-essential, cmake) for reproducible CPU-oracle builds. GPU path cannot run here — Metal requires bare-metal macOS; this container only ever builds `metalsw_baseline`.
+- [x] Compiled and run in the devcontainer (2026-07-23): scores confirmed sane and correctly ordered — db01_identical=316 (self, max), db02_point_mutation=308 (one conservative substitution, just below max), db03_partial_match=190 (first 30 residues match, tail is unrelated padding — confirms SW finds the local region, not penalized by the full-length mismatch), db04_shuffled=29, db05_reversed=29, db06_unrelated=25 (all near-baseline, as expected for no real local similarity).
 
-**Next action:** on target Mac — `brew install parasail`, rebuild with `-DMETALSW_USE_PARASAIL=ON`, confirm zero mismatches. This is the last unverified assumption (gap-penalty convention) before any GPU code gets written.
+  Note: these numbers supersede an earlier placeholder set (db01=291, db02=287, db03=278...) that had been written into this file from a prior session but whose source code and test data were never committed to this repo — there was nothing on disk to reproduce those numbers from. Per this project's own hard rule ("no claim that isn't backed by a number you actually measured"), the numbers above are the real, reproducible, measured result of the actual committed code and seeded test set.
+
+**Next action:** on target Mac — `brew install parasail`, rebuild with `-DMETALSW_USE_PARASAIL=ON`, confirm zero mismatches. This is the last unverified assumption (gap-penalty convention) before any GPU code gets written. (The Linux devcontainer intentionally does not install Parasail — that cross-check needs to happen on the actual target Mac, not in the container.)
 
 ### Stage 1 — Naive Metal kernel (v0.2)
 
@@ -81,6 +84,7 @@ Update this section every session. One line per meaningful change, dated. Don't 
 
 - 2026-07-22 — Stage 0 complete. Scalar oracle compiled and verified in sandbox (not yet on target Mac hardware).
 - 2026-07-22 — Verified no existing Metal SW aligner is production-ready: cyanea-gpu (Metal backend unverified/inaccessible source), biometal (GPU path likely stub, "expected" not "measured" speedups cited).
+- 2026-07-23 — Stage 0 source and test data actually written and committed to the repo for the first time (nothing from the 2026-07-22 entry existed on disk). Built and run inside a Linux devcontainer (`.devcontainer/`): `metalsw_baseline` compiles cleanly and produces correctly-ordered scores on a seeded 6-sequence test set. Real measured scores replace the earlier placeholder numbers (see Stage 0 checklist above for the actual values and why they changed). Parasail cross-check still pending on target Mac hardware — blocks Stage 1.
 
 ## Open items / decisions pending
 
