@@ -26,6 +26,44 @@ if(METALSW_USE_PARASAIL)
 endif()
 
 if(APPLE)
-    # GPU target (Stage 1, v0.2) — Metal kernel + metal-cpp host, not yet implemented.
-    # add_executable(metalsw_gpu src/gpu_main.cpp src/metal_runtime.cpp ...)
+    include(FetchContent)
+    FetchContent_Declare(
+        metal-cpp
+        GIT_REPOSITORY https://github.com/bkaradzic/metal-cpp.git
+        GIT_TAG c9727bc9468a90d7ea8fc89d5ee03b8d8992a570
+    )
+    FetchContent_MakeAvailable(metal-cpp)
+
+    set(METAL_SHADER_SRC ${CMAKE_SOURCE_DIR}/metal/smith_waterman.metal)
+    set(METAL_AIR ${CMAKE_BINARY_DIR}/smith_waterman.air)
+    set(METAL_LIB ${CMAKE_BINARY_DIR}/smith_waterman.metallib)
+
+    add_custom_command(
+        OUTPUT ${METAL_LIB}
+        COMMAND xcrun -sdk macosx metal -c ${METAL_SHADER_SRC} -o ${METAL_AIR}
+        COMMAND xcrun -sdk macosx metallib ${METAL_AIR} -o ${METAL_LIB}
+        DEPENDS ${METAL_SHADER_SRC}
+        COMMENT "Compiling Metal shader smith_waterman.metal"
+    )
+    add_custom_target(metalsw_shaders DEPENDS ${METAL_LIB})
+
+    add_executable(metalsw_gpu
+        src/gpu_main.cpp
+        src/metal_runtime.cpp
+        src/fasta.cpp
+        src/sw_reference.cpp
+    )
+    target_include_directories(metalsw_gpu PRIVATE include ${metal-cpp_SOURCE_DIR})
+    target_link_libraries(metalsw_gpu PRIVATE
+        "-framework Metal"
+        "-framework Foundation"
+        "-framework QuartzCore"
+    )
+    add_dependencies(metalsw_gpu metalsw_shaders)
+
+    # Copy the compiled metallib next to the binary so the default relative
+    # path in gpu_main.cpp resolves without extra flags.
+    add_custom_command(TARGET metalsw_gpu POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${METAL_LIB} $<TARGET_FILE_DIR:metalsw_gpu>/smith_waterman.metallib
+    )
 endif()
