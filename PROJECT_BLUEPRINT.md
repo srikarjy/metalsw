@@ -53,9 +53,9 @@ Setup note: building this target required downloading Xcode's Metal Toolchain co
 
 ### Stage 2 — Optimization + rigorous benchmarking (v0.3–v0.4)
 
-- [ ] Query-profile memory layout (coalesced reads)
-- [ ] INT8 scores with INT16 overflow-recompute fallback
-- [ ] Threadgroup memory tuning (8–16 KiB target, verify occupancy via Xcode GPU profiler)
+- [x] Query-profile memory layout — `buildQueryProfile()` in `include/blosum62.hpp`, precomputes `profile[residueIdx * queryLen + j]`; replaces the kernel's residue-index + 2D-matrix lookup with one indexed read per DP cell. Validated in the Linux devcontainer with a standalone test (`tests/test_query_profile.cpp`, 1944/1944 checks pass) before any kernel code changed.
+- [x] INT8 scores with INT16 overflow-recompute fallback — `smith_waterman_score_int8` (new kernel, `metal/smith_waterman.metal`) runs H/E/F in `int8_t`, flags per-thread saturation; host (`src/metal_runtime.cpp`) dispatches it over all sequences first, then re-dispatches the existing `smith_waterman_score` (int16) kernel only over the flagged subset via filtered offset/length buffers, and merges results. Verified on target Mac: 3/6 test sequences overflowed int8 (the three scoring >127) and correctly fell back; the other 3 were computed directly by the int8 path — both paths exercised and correct.
+- [~] Threadgroup memory tuning (8–16 KiB target, verify occupancy via Xcode GPU profiler) — partially done. Threadgroup size is now chosen from `threadExecutionWidth()` (32 on this M2) rather than just `maxTotalThreadsPerThreadgroup()` (1024). `staticThreadgroupMemoryLength` is currently 0 for both kernels (no explicit `threadgroup`-address-space buffers) — moving the query profile there was evaluated but not implemented: at `MAX_QUERY_LEN=512`, the full profile is 24 KiB, over budget without a chunked/streaming scheme, which is a bigger change than this pass scoped. Actual Xcode GPU Frame Capture / Instruments occupancy verification is an interactive GUI step this assistant can't drive headlessly — still open if you want to do it yourself.
 - [ ] Sequence-length binning for balanced SIMD-group workloads
 - [ ] Benchmark harness: n≥10 runs per data point, report mean ± stddev, not best-of-N
 - [ ] Thermal protocol: documented warm-up period before measurement, steady-state GCUPS reported separately from cold-start
@@ -64,6 +64,8 @@ Setup note: building this target required downloading Xcode's Metal Toolchain co
 - [ ] Parasail baseline run on the same machine, same methodology, same corpus
 
 **Gate:** benchmark table complete and reproducible from a documented recipe (not "trust me, I ran it once")
+
+**v0.3 correctness re-check (2026-07-23):** after the query-profile and INT8/fallback changes, `metalsw_gpu` still reports 6/6 PASS bit-identical to the CPU oracle on the full test set. Sequence-length binning and the full benchmark harness (v0.4) are separate, not-yet-started follow-up work.
 
 ### Stage 3 — Comparative analysis (v0.5)
 
@@ -89,6 +91,7 @@ Update this section every session. One line per meaningful change, dated. Don't 
 - 2026-07-23 — Stage 0 source and test data actually written and committed to the repo for the first time (nothing from the 2026-07-22 entry existed on disk). Built and run inside a Linux devcontainer (`.devcontainer/`): `metalsw_baseline` compiles cleanly and produces correctly-ordered scores on a seeded 6-sequence test set. Real measured scores replace the earlier placeholder numbers (see Stage 0 checklist above for the actual values and why they changed).
 - 2026-07-23 — Parasail cross-check run on the actual target Mac (M2, arm64, Darwin 25.5.0): 0/6 mismatches. Gap-penalty convention confirmed correct. Stage 0 gate fully cleared — ready to start Stage 1 (v0.2, naive Metal kernel).
 - 2026-07-23 — Stage 1 (v0.2) implemented and gate cleared: naive Metal kernel (`metal/smith_waterman.metal`), metal-cpp host runtime, `metalsw_gpu` CLI, wired into CMake. Built and run on target Mac hardware — 6/6 PASS, bit-identical to CPU oracle on the full test set. Regression-checked the CMake changes in the Stage 0 Linux devcontainer first (CPU oracle build unaffected) before touching the Metal toolchain on the Mac.
+- 2026-07-23 — Stage 2 part 1 (v0.3, kernel optimization) done: query-profile layout (validated in devcontainer first via `tests/test_query_profile.cpp`, then wired into both kernels), INT8-with-INT16-fallback scoring (new `smith_waterman_score_int8` kernel + host-side dispatch/merge logic), and threadExecutionWidth-based threadgroup sizing. Re-ran the correctness gate on target Mac: still 6/6 PASS. Threadgroup-memory occupancy tuning only partially done (see checklist note) — sequence-length binning and the full v0.4 benchmark suite are next.
 
 ## Open items / decisions pending
 

@@ -17,6 +17,9 @@ add_executable(metalsw_baseline
 )
 target_include_directories(metalsw_baseline PRIVATE include)
 
+add_executable(test_query_profile tests/test_query_profile.cpp)
+target_include_directories(test_query_profile PRIVATE include)
+
 if(METALSW_USE_PARASAIL)
     find_library(PARASAIL_LIB parasail REQUIRED)
     find_path(PARASAIL_INCLUDE_DIR parasail.h REQUIRED)

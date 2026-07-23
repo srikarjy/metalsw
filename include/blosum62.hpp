@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace metalsw {
 
@@ -53,6 +55,21 @@ inline int blosumScore(char a, char b) {
     if (ia < 0) ia = kResidueIndex[static_cast<unsigned char>('X')];
     if (ib < 0) ib = kResidueIndex[static_cast<unsigned char>('X')];
     return kBlosum62[ia][ib];
+}
+
+// Query profile: profile[residueIdx * query.size() + j] == blosumScore(alphabet[residueIdx], query[j]).
+// Precomputing this trades kAlphabetSize*queryLen*2 bytes of memory for turning each DP cell's
+// substitution lookup from a residue-index + 2D-matrix indirection into a single indexed read.
+inline std::vector<int16_t> buildQueryProfile(const std::string &query) {
+    std::vector<int16_t> profile(static_cast<size_t>(kAlphabetSize) * query.size());
+    for (int r = 0; r < kAlphabetSize; ++r) {
+        const char residueChar = kAlphabet[r];
+        for (size_t j = 0; j < query.size(); ++j) {
+            profile[static_cast<size_t>(r) * query.size() + j] = static_cast<int16_t>(
+                blosumScore(residueChar, query[j]));
+        }
+    }
+    return profile;
 }
 
 }  // namespace metalsw
