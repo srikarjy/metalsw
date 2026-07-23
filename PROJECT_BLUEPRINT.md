@@ -37,7 +37,7 @@ Do not skip a version's gate to start the next. If a gate fails, the fix happens
 
   Note: these numbers supersede an earlier placeholder set (db01=291, db02=287, db03=278...) that had been written into this file from a prior session but whose source code and test data were never committed to this repo — there was nothing on disk to reproduce those numbers from. Per this project's own hard rule ("no claim that isn't backed by a number you actually measured"), the numbers above are the real, reproducible, measured result of the actual committed code and seeded test set.
 
-**Next action:** on target Mac — `brew install parasail`, rebuild with `-DMETALSW_USE_PARASAIL=ON`, confirm zero mismatches. This is the last unverified assumption (gap-penalty convention) before any GPU code gets written. (The Linux devcontainer intentionally does not install Parasail — that cross-check needs to happen on the actual target Mac, not in the container.)
+- [x] Parasail cross-check on target Mac (M2, 2026-07-23): `brew tap brewsci/bio && brew install brewsci/bio/parasail` (not in homebrew-core), rebuilt with `-DMETALSW_USE_PARASAIL=ON -DCMAKE_PREFIX_PATH="$(brew --prefix parasail)"`. Result: **0/6 mismatches** — the gap-penalty convention (open=11 inclusive of first gap position, extend=1 per additional position) matches Parasail's `parasail_sw` exactly. This was the last unverified assumption before GPU code. Gate cleared — Stage 1 (v0.2, naive Metal kernel) can start.
 
 ### Stage 1 — Naive Metal kernel (v0.2)
 
@@ -84,11 +84,11 @@ Update this section every session. One line per meaningful change, dated. Don't 
 
 - 2026-07-22 — Stage 0 complete. Scalar oracle compiled and verified in sandbox (not yet on target Mac hardware).
 - 2026-07-22 — Verified no existing Metal SW aligner is production-ready: cyanea-gpu (Metal backend unverified/inaccessible source), biometal (GPU path likely stub, "expected" not "measured" speedups cited).
-- 2026-07-23 — Stage 0 source and test data actually written and committed to the repo for the first time (nothing from the 2026-07-22 entry existed on disk). Built and run inside a Linux devcontainer (`.devcontainer/`): `metalsw_baseline` compiles cleanly and produces correctly-ordered scores on a seeded 6-sequence test set. Real measured scores replace the earlier placeholder numbers (see Stage 0 checklist above for the actual values and why they changed). Parasail cross-check still pending on target Mac hardware — blocks Stage 1.
+- 2026-07-23 — Stage 0 source and test data actually written and committed to the repo for the first time (nothing from the 2026-07-22 entry existed on disk). Built and run inside a Linux devcontainer (`.devcontainer/`): `metalsw_baseline` compiles cleanly and produces correctly-ordered scores on a seeded 6-sequence test set. Real measured scores replace the earlier placeholder numbers (see Stage 0 checklist above for the actual values and why they changed).
+- 2026-07-23 — Parasail cross-check run on the actual target Mac (M2, arm64, Darwin 25.5.0): 0/6 mismatches. Gap-penalty convention confirmed correct. Stage 0 gate fully cleared — ready to start Stage 1 (v0.2, naive Metal kernel).
 
 ## Open items / decisions pending
 
-- [ ] Confirm Parasail cross-check passes with zero mismatches on the actual Mac (blocks Stage 1 start)
 - [ ] Decide whether to attempt building/testing cyanea-gpu's GPU feature flag as a first-party prior-art data point for the README
 - [ ] Confirm whether a second, actively-cooled Apple Silicon machine is available for the Stage 3 throttling comparison (optional but strengthens the paper)
 
