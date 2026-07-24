@@ -12,6 +12,7 @@ option(METALSW_USE_PARASAIL "Cross-check oracle scores against Parasail" OFF)
 
 add_executable(metalsw_baseline
     src/baseline_main.cpp
+    src/parasail_score.cpp
     src/fasta.cpp
     src/sw_reference.cpp
 )
@@ -26,6 +27,17 @@ if(METALSW_USE_PARASAIL)
     target_compile_definitions(metalsw_baseline PRIVATE METALSW_USE_PARASAIL)
     target_include_directories(metalsw_baseline PRIVATE ${PARASAIL_INCLUDE_DIR})
     target_link_libraries(metalsw_baseline PRIVATE ${PARASAIL_LIB})
+
+    # Same-machine, same-methodology Parasail CPU baseline for the v0.4
+    # benchmark table (see PROJECT_BLUEPRINT.md Stage 2 gate).
+    add_executable(metalsw_parasail_bench
+        src/parasail_bench_main.cpp
+        src/parasail_score.cpp
+        src/fasta.cpp
+    )
+    target_include_directories(metalsw_parasail_bench PRIVATE include ${PARASAIL_INCLUDE_DIR})
+    target_compile_definitions(metalsw_parasail_bench PRIVATE METALSW_USE_PARASAIL)
+    target_link_libraries(metalsw_parasail_bench PRIVATE ${PARASAIL_LIB})
 endif()
 
 if(APPLE)

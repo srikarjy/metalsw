@@ -5,14 +5,10 @@
 #include <vector>
 
 #include "fasta.hpp"
+#include "parasail_score.hpp"
 #include "stats.hpp"
 #include "sw_reference.hpp"
 #include "timing.hpp"
-
-#ifdef METALSW_USE_PARASAIL
-#include <parasail.h>
-#include <parasail/matrices/blosum62.h>
-#endif
 
 namespace {
 
@@ -20,17 +16,6 @@ struct ScoredHit {
     std::string id;
     int score;
 };
-
-#ifdef METALSW_USE_PARASAIL
-int parasailScore(const std::string &query, const std::string &db, int gapOpen, int gapExtend) {
-    parasail_result_t *result = parasail_sw(query.c_str(), static_cast<int>(query.size()),
-                                             db.c_str(), static_cast<int>(db.size()), gapOpen,
-                                             gapExtend, &parasail_blosum62);
-    int score = result->score;
-    parasail_result_free(result);
-    return score;
-}
-#endif
 
 }  // namespace
 
@@ -79,7 +64,7 @@ int main(int argc, char **argv) {
             hits.push_back({rec.id, score});
 
 #ifdef METALSW_USE_PARASAIL
-            const int refScore = parasailScore(query, rec.sequence, gapOpen, gapExtend);
+            const int refScore = metalsw::parasailScore(query, rec.sequence, gapOpen, gapExtend);
             if (refScore != score) {
                 std::fprintf(stderr, "MISMATCH %s: oracle=%d parasail=%d\n", rec.id.c_str(), score,
                              refScore);
