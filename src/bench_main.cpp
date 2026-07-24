@@ -7,8 +7,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -66,9 +68,11 @@ int main(int argc, char **argv) {
     }
 
     std::fprintf(stderr, "measured: %d iterations\n", measuredIters);
+    std::filesystem::create_directories("results");
     const std::string tag = timestamp();
     const std::string csvPath = "results/benchmark_" + tag + "_iterations.csv";
     std::ofstream csv(csvPath);
+    if (!csv) throw std::runtime_error("failed to open " + csvPath + " for writing");
     csv << "iteration,elapsed_since_start_s,iter_seconds,gcups\n";
 
     metalsw::Timer wallClock;  // elapsed since the measured phase began, for the thermal curve
@@ -85,6 +89,7 @@ int main(int argc, char **argv) {
 
     const std::string resultsPath = "results/benchmark_" + tag + ".txt";
     std::ofstream out(resultsPath);
+    if (!out) throw std::runtime_error("failed to open " + resultsPath + " for writing");
     auto report = [&](std::ostream &os) {
         os << "metalsw GPU benchmark\n";
         os << "query: " << queryPath << " (" << query.size() << " residues)\n";
