@@ -36,9 +36,9 @@ int main(int argc, char **argv) {
     auto dbRecords = metalsw::parseFasta(dbPath);
     const std::string &query = queryRecords.front().sequence;
 
+    metalsw::GpuRunner runner(metallibPath);
     metalsw::Timer timer;
-    std::vector<int> gpuScores =
-        metalsw::runSmithWatermanGpu(metallibPath, query, dbRecords, gapOpen, gapExtend);
+    std::vector<int> gpuScores = runner.run(query, dbRecords, gapOpen, gapExtend);
     const double elapsed = timer.elapsedSeconds();
 
     uint64_t totalDbResidues = 0;

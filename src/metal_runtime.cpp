@@ -52,8 +52,6 @@ void logPipelineStats(const char *label, MTL::ComputePipelineState *pso) {
 }
 
 MTL::Size threadgroupSizeFor(MTL::ComputePipelineState *pso, NS::UInteger count) {
-    // Round down to a multiple of the SIMD width where possible, capped by both
-    // the pipeline's max and the actual dispatch count.
     const NS::UInteger width = pso->threadExecutionWidth();
     const NS::UInteger maxThreads = pso->maxTotalThreadsPerThreadgroup();
     NS::UInteger size = std::min<NS::UInteger>(maxThreads, count);
@@ -64,18 +62,29 @@ MTL::Size threadgroupSizeFor(MTL::ComputePipelineState *pso, NS::UInteger count)
 
 }  // namespace
 
-std::vector<int> runSmithWatermanGpu(const std::string &metallibPath, const std::string &query,
-                                      const std::vector<FastaRecord> &dbRecords, int gapOpen,
-                                      int gapExtend) {
-    if (query.size() > kMaxQueryLen) {
-        throw std::runtime_error("query longer than MAX_QUERY_LEN (512) in kernel");
+struct GpuRunner::Impl {
+    NS::AutoreleasePool *pool = nullptr;
+    MTL::Device *device = nullptr;
+    MTL::Library *library = nullptr;
+    MTL::ComputePipelineState *psoInt8 = nullptr;
+    MTL::ComputePipelineState *psoInt16 = nullptr;
+    MTL::CommandQueue *queue = nullptr;
+
+    ~Impl() {
+        if (queue) queue->release();
+        if (psoInt16) psoInt16->release();
+        if (psoInt8) psoInt8->release();
+        if (library) library->release();
+        if (device) device->release();
+        if (pool) pool->release();
     }
+};
 
-    NS::AutoreleasePool *pool = NS::AutoreleasePool::alloc()->init();
+GpuRunner::GpuRunner(const std::string &metallibPath) : impl_(std::make_unique<Impl>()) {
+    impl_->pool = NS::AutoreleasePool::alloc()->init();
 
-    MTL::Device *device = MTL::CreateSystemDefaultDevice();
-    if (!device) {
-        pool->release();
+    impl_->device = MTL::CreateSystemDefaultDevice();
+    if (!impl_->device) {
         throw std::runtime_error("no Metal device available");
     }
 
@@ -83,19 +92,31 @@ std::vector<int> runSmithWatermanGpu(const std::string &metallibPath, const std:
     NS::String *pathStr =
         NS::String::string(metallibPath.c_str(), NS::StringEncoding::UTF8StringEncoding);
     NS::URL *url = NS::URL::fileURLWithPath(pathStr);
-    MTL::Library *library = device->newLibrary(url, &error);
-    if (!library) {
+    impl_->library = impl_->device->newLibrary(url, &error);
+    if (!impl_->library) {
         std::string msg = "failed to load metallib: " + metallibPath;
         if (error) msg += std::string(" (") + error->localizedDescription()->utf8String() + ")";
-        device->release();
-        pool->release();
         throw std::runtime_error(msg);
     }
 
-    MTL::ComputePipelineState *psoInt8 = makePipeline(device, library, "smith_waterman_score_int8");
-    MTL::ComputePipelineState *psoInt16 = makePipeline(device, library, "smith_waterman_score");
-    logPipelineStats("int8 kernel ", psoInt8);
-    logPipelineStats("int16 kernel", psoInt16);
+    impl_->psoInt8 = makePipeline(impl_->device, impl_->library, "smith_waterman_score_int8");
+    impl_->psoInt16 = makePipeline(impl_->device, impl_->library, "smith_waterman_score");
+    logPipelineStats("int8 kernel ", impl_->psoInt8);
+    logPipelineStats("int16 kernel", impl_->psoInt16);
+
+    impl_->queue = impl_->device->newCommandQueue();
+}
+
+GpuRunner::~GpuRunner() = default;
+
+std::vector<int> GpuRunner::run(const std::string &query,
+                                 const std::vector<FastaRecord> &dbRecords, int gapOpen,
+                                 int gapExtend) {
+    if (query.size() > kMaxQueryLen) {
+        throw std::runtime_error("query longer than MAX_QUERY_LEN (512) in kernel");
+    }
+
+    MTL::Device *device = impl_->device;
 
     // Pack DB sequences into one contiguous buffer + offsets/lengths.
     std::vector<char> dbConcat;
@@ -121,8 +142,6 @@ std::vector<int> runSmithWatermanGpu(const std::string &metallibPath, const std:
     MTL::Buffer *residueIndexBuf = makeBuffer(kResidueIndex.data(), kResidueIndex.size());
     MTL::Buffer *dbSeqsBuf = makeBuffer(dbConcat.data(), dbConcat.size());
 
-    MTL::CommandQueue *queue = device->newCommandQueue();
-
     // --- Pass 1: fast INT8 kernel over all sequences. ---
     Params paramsAll{static_cast<uint32_t>(query.size()), static_cast<uint32_t>(dbRecords.size()),
                       gapOpen, gapExtend};
@@ -135,9 +154,9 @@ std::vector<int> runSmithWatermanGpu(const std::string &metallibPath, const std:
         device->newBuffer(dbRecords.size() * sizeof(uint8_t), MTL::ResourceStorageModeShared);
 
     {
-        MTL::CommandBuffer *cmdBuf = queue->commandBuffer();
+        MTL::CommandBuffer *cmdBuf = impl_->queue->commandBuffer();
         MTL::ComputeCommandEncoder *encoder = cmdBuf->computeCommandEncoder();
-        encoder->setComputePipelineState(psoInt8);
+        encoder->setComputePipelineState(impl_->psoInt8);
         encoder->setBuffer(paramsAllBuf, 0, 0);
         encoder->setBuffer(profileBuf, 0, 1);
         encoder->setBuffer(residueIndexBuf, 0, 2);
@@ -149,7 +168,7 @@ std::vector<int> runSmithWatermanGpu(const std::string &metallibPath, const std:
 
         const NS::UInteger dbCount = dbRecords.size();
         MTL::Size gridSize = MTL::Size::Make(dbCount, 1, 1);
-        MTL::Size groupSize = threadgroupSizeFor(psoInt8, dbCount);
+        MTL::Size groupSize = threadgroupSizeFor(impl_->psoInt8, dbCount);
         encoder->dispatchThreads(gridSize, groupSize);
         encoder->endEncoding();
         cmdBuf->commit();
@@ -188,9 +207,9 @@ std::vector<int> runSmithWatermanGpu(const std::string &metallibPath, const std:
         MTL::Buffer *outInt16Buf = device->newBuffer(fallbackIdx.size() * sizeof(int32_t),
                                                       MTL::ResourceStorageModeShared);
 
-        MTL::CommandBuffer *cmdBuf = queue->commandBuffer();
+        MTL::CommandBuffer *cmdBuf = impl_->queue->commandBuffer();
         MTL::ComputeCommandEncoder *encoder = cmdBuf->computeCommandEncoder();
-        encoder->setComputePipelineState(psoInt16);
+        encoder->setComputePipelineState(impl_->psoInt16);
         encoder->setBuffer(paramsFbBuf, 0, 0);
         encoder->setBuffer(profileBuf, 0, 1);
         encoder->setBuffer(residueIndexBuf, 0, 2);
@@ -201,7 +220,7 @@ std::vector<int> runSmithWatermanGpu(const std::string &metallibPath, const std:
 
         const NS::UInteger fbCount = fallbackIdx.size();
         MTL::Size gridSize = MTL::Size::Make(fbCount, 1, 1);
-        MTL::Size groupSize = threadgroupSizeFor(psoInt16, fbCount);
+        MTL::Size groupSize = threadgroupSizeFor(impl_->psoInt16, fbCount);
         encoder->dispatchThreads(gridSize, groupSize);
         encoder->endEncoding();
         cmdBuf->commit();
@@ -226,12 +245,6 @@ std::vector<int> runSmithWatermanGpu(const std::string &metallibPath, const std:
     dbLengthsBuf->release();
     outInt8Buf->release();
     overflowBuf->release();
-    queue->release();
-    psoInt8->release();
-    psoInt16->release();
-    library->release();
-    device->release();
-    pool->release();
 
     return scores;
 }

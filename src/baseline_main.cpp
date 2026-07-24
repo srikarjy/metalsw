@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "fasta.hpp"
+#include "stats.hpp"
 #include "sw_reference.hpp"
 #include "timing.hpp"
 
@@ -35,41 +36,60 @@ int parasailScore(const std::string &query, const std::string &db, int gapOpen, 
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: %s <query.fasta> <db.fasta> [topN]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <query.fasta> <db.fasta> [topN] [--repeat N]\n", argv[0]);
         return 1;
     }
 
     const std::string queryPath = argv[1];
     const std::string dbPath = argv[2];
-    const int topN = argc > 3 ? std::atoi(argv[3]) : 10;
     const int gapOpen = 11;
     const int gapExtend = 1;
+
+    int topN = 10;
+    int repeat = 1;
+    for (int i = 3; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--repeat" && i + 1 < argc) {
+            repeat = std::atoi(argv[++i]);
+        } else {
+            topN = std::atoi(argv[i]);
+        }
+    }
+    if (repeat < 1) repeat = 1;
 
     auto queryRecords = metalsw::parseFasta(queryPath);
     auto dbRecords = metalsw::parseFasta(dbPath);
     const std::string &query = queryRecords.front().sequence;
 
-    std::vector<ScoredHit> hits;
-    hits.reserve(dbRecords.size());
-
     uint64_t totalDbResidues = 0;
-    metalsw::Timer timer;
+    for (const auto &rec : dbRecords) totalDbResidues += rec.sequence.size();
+
+    std::vector<ScoredHit> hits;
     int mismatches = 0;
-    for (const auto &rec : dbRecords) {
-        const int score = metalsw::smithWatermanScore(query, rec.sequence, gapOpen, gapExtend);
-        hits.push_back({rec.id, score});
-        totalDbResidues += rec.sequence.size();
+    metalsw::RunningStats gcupsStats;
+
+    for (int pass = 0; pass < repeat; ++pass) {
+        hits.clear();
+        hits.reserve(dbRecords.size());
+        mismatches = 0;
+
+        metalsw::Timer timer;
+        for (const auto &rec : dbRecords) {
+            const int score = metalsw::smithWatermanScore(query, rec.sequence, gapOpen, gapExtend);
+            hits.push_back({rec.id, score});
 
 #ifdef METALSW_USE_PARASAIL
-        const int refScore = parasailScore(query, rec.sequence, gapOpen, gapExtend);
-        if (refScore != score) {
-            std::fprintf(stderr, "MISMATCH %s: oracle=%d parasail=%d\n", rec.id.c_str(), score,
-                         refScore);
-            ++mismatches;
-        }
+            const int refScore = parasailScore(query, rec.sequence, gapOpen, gapExtend);
+            if (refScore != score) {
+                std::fprintf(stderr, "MISMATCH %s: oracle=%d parasail=%d\n", rec.id.c_str(), score,
+                             refScore);
+                ++mismatches;
+            }
 #endif
+        }
+        const double elapsed = timer.elapsedSeconds();
+        gcupsStats.add(metalsw::gcups(query.size(), totalDbResidues, elapsed));
     }
-    const double elapsed = timer.elapsedSeconds();
 
     std::sort(hits.begin(), hits.end(),
               [](const ScoredHit &a, const ScoredHit &b) { return a.score > b.score; });
@@ -79,11 +99,16 @@ int main(int argc, char **argv) {
         std::printf("%-20s %d\n", hits[i].id.c_str(), hits[i].score);
     }
 
-    std::fprintf(stderr, "\n%zu sequences, %.4fs, %.4f GCUPS\n", dbRecords.size(), elapsed,
-                 metalsw::gcups(query.size(), totalDbResidues, elapsed));
+    if (repeat == 1) {
+        std::fprintf(stderr, "\n%zu sequences, %.4f GCUPS\n", dbRecords.size(), gcupsStats.mean());
+    } else {
+        std::fprintf(stderr, "\n%zu sequences, %d repeats, GCUPS mean=%.4f stddev=%.4f\n",
+                     dbRecords.size(), repeat, gcupsStats.mean(), gcupsStats.stddev());
+    }
 
 #ifdef METALSW_USE_PARASAIL
-    std::fprintf(stderr, "%d/%zu mismatches vs parasail\n", mismatches, dbRecords.size());
+    std::fprintf(stderr, "%d/%zu mismatches vs parasail (last pass)\n", mismatches,
+                 dbRecords.size());
     if (mismatches > 0) return 1;
 #endif
 

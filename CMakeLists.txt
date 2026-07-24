@@ -69,4 +69,22 @@ if(APPLE)
     add_custom_command(TARGET metalsw_gpu POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${METAL_LIB} $<TARGET_FILE_DIR:metalsw_gpu>/smith_waterman.metallib
     )
+
+    add_executable(metalsw_bench
+        src/bench_main.cpp
+        src/metal_runtime.cpp
+        src/fasta.cpp
+        src/sw_reference.cpp
+    )
+    target_include_directories(metalsw_bench PRIVATE include ${metal-cpp_SOURCE_DIR})
+    target_link_libraries(metalsw_bench PRIVATE
+        "-framework Metal"
+        "-framework Foundation"
+        "-framework QuartzCore"
+    )
+    add_dependencies(metalsw_bench metalsw_shaders)
+
+    add_custom_command(TARGET metalsw_bench POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${METAL_LIB} $<TARGET_FILE_DIR:metalsw_bench>/smith_waterman.metallib
+    )
 endif()
