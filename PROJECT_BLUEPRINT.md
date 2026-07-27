@@ -128,6 +128,13 @@ Binning helps consistently across all query lengths at this DB size (750 sequenc
 - [ ] Written analysis: unified memory removing host/device transfer cost; absence of DPX-style fused add-max as the binding disadvantage; where the M2 Air's fanless thermal ceiling shows up in the numbers
 - [ ] (Optional, strengthens paper) same benchmark on a second, actively-cooled Apple Silicon machine if accessible — throttled-vs-unthrottled delta
 
+**Cited figures (verified against the papers directly, 2026-07-27, not re-measured on our hardware):**
+
+- **CUDASW++4.0** ([bioRxiv preprint](https://www.biorxiv.org/content/10.1101/2023.10.09.561526v1), [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC11531700/), [BMC Bioinformatics](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-024-05965-6), published Nov 2024) — peak kernel throughput: **A100 1.94 TCUPS** (half2 arithmetic), **L40S 5.01 TCUPS** (half2 arithmetic), **H100 5.71 TCUPS** (s16x2 + DPX instructions). Energy efficiency: **H100 15.7 GCUPS/Watt** and **L40S 15.2 GCUPS/Watt**, both measured "scanning a synthetic database with equal-sized sequences" at rated TDP (200W / 300W respectively), s16x2 datatype. Protein Smith-Waterman, same problem class as metalsw.
+- **Accelign** ([bioRxiv preprint](https://www.biorxiv.org/content/10.64898/2025.12.17.694868v1.full), published Dec 2025) — peak throughput on a single Nvidia RTX PRO 6000 Blackwell GPU: **16.1 TCUPS** for global alignment with linear gap penalties, **9.1 TCUPS** for affine-gap alignment (metalsw's gap model — open=11/extend=1 Gotoh affine, not linear). No GCUPS/Watt figure reported in the paper for this configuration; not fabricating one from the GPU's public TDP spec since that would not be a number the paper itself reports. Warp-intrinsics-based parallelization strategy, evaluated on UniRef50 with real protein queries (144-5,478 residues) — closer to metalsw's DB-search use case than CUDASW++4.0's synthetic equal-length benchmark.
+
+**metalsw's own GCUPS/Watt is not yet computed** — the one power measurement taken so far (Stage 2, 2026-07-24) was *before* sequence-length binning, at the 750-sequence corpus where the GPU wasn't even beating the CPU baseline. A fresh `powermetrics` run at a corpus size where the GPU actually wins (50,000 sequences, 5.3 GCUPS post-binning) is in progress as of this entry — see the progress log for the result once it lands.
+
 ### Stage 4 — Publication (v1.0)
 
 - [ ] README rewritten with: problem statement, honest positioning ("no verified, benchmarked, working Metal SW aligner exists" — not "first"), prior-art section naming cyanea-gpu and biometal specifically with their actual limitations, build/run instructions, benchmark table
