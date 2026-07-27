@@ -94,6 +94,14 @@ struct GpuRunner::Impl {
     size_t dbCountCapacity = 0;       // sequences the db*/out* buffers are sized for
     size_t dbConcatByteCapacity = 0;  // bytes dbSeqsBuf is sized for
 
+    // Length-sorted dispatch order: sortedIdx[k] is the original dbRecords
+    // index packed at grid position k. Sorting by length means threads in
+    // the same threadgroup (== same SIMD group, consecutive tids) have
+    // similar sequence lengths, so short-sequence threads spend less time
+    // idling on the longest sequence in their group. Cached alongside the
+    // DB buffers -- only recomputed when the corpus changes.
+    std::vector<uint32_t> sortedIdx;
+
     // Fallback-pass buffers, sized for the worst case (every sequence
     // overflows the int8 path) once dbCountCapacity is known, so they never
     // need reallocating on repeated calls even though the actual fallback
@@ -201,16 +209,26 @@ std::vector<int> GpuRunner::run(const std::string &query,
     std::vector<uint32_t> offsets;
     std::vector<uint32_t> lengths;
     if (!sameDb) {
+        // Sort sequences by length so consecutive grid positions (== the
+        // same threadgroup/SIMD group) hold similarly-sized sequences,
+        // instead of dispatch order matching FASTA file order.
+        std::vector<uint32_t> &sortedIdx = impl_->sortedIdx;
+        sortedIdx.resize(dbCount);
+        for (size_t i = 0; i < dbCount; ++i) sortedIdx[i] = static_cast<uint32_t>(i);
+        std::sort(sortedIdx.begin(), sortedIdx.end(), [&](uint32_t a, uint32_t b) {
+            return dbRecords[a].sequence.size() < dbRecords[b].sequence.size();
+        });
+
         std::vector<char> dbConcat;
         offsets.resize(dbCount);
         lengths.resize(dbCount);
         uint32_t cursor = 0;
-        for (size_t i = 0; i < dbCount; ++i) {
-            offsets[i] = cursor;
-            lengths[i] = static_cast<uint32_t>(dbRecords[i].sequence.size());
-            dbConcat.insert(dbConcat.end(), dbRecords[i].sequence.begin(),
-                             dbRecords[i].sequence.end());
-            cursor += lengths[i];
+        for (size_t k = 0; k < dbCount; ++k) {
+            const FastaRecord &rec = dbRecords[sortedIdx[k]];
+            offsets[k] = cursor;
+            lengths[k] = static_cast<uint32_t>(rec.sequence.size());
+            dbConcat.insert(dbConcat.end(), rec.sequence.begin(), rec.sequence.end());
+            cursor += lengths[k];
         }
         if (dbConcat.empty()) dbConcat.push_back('\0');  // avoid zero-length buffer
 
@@ -357,7 +375,13 @@ std::vector<int> GpuRunner::run(const std::string &query,
         }
     }
 
-    return scores;
+    // scores[] is in length-sorted dispatch order; unpermute back to the
+    // order dbRecords was given in.
+    std::vector<int> orderedScores(dbCount);
+    for (size_t k = 0; k < dbCount; ++k) {
+        orderedScores[impl_->sortedIdx[k]] = scores[k];
+    }
+    return orderedScores;
 }
 
 }  // namespace metalsw
