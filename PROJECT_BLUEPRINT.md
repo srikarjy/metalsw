@@ -105,7 +105,18 @@ Setup note: building this target required downloading Xcode's Metal Toolchain co
 | 20,000 | 3.379 ± 0.0621 | 5.224 ± 0.0322 | +55% |
 | 50,000 | 3.504 ± 0.0314 | 5.309 ± 0.0284 | +51% |
 
-Binning helps most at the larger corpora, where length variance within a 32-wide SIMD group was apparently large enough to cause real divergence stalls (short-sequence threads idling while the longest sequence in their group finishes). At 750 and 5,000 the effect is smaller/flat, consistent with fixed per-dispatch overhead still dominating at that scale rather than compute-time divergence. Query-length sweep not yet re-measured post-binning.
+Binning helps most at the larger corpora, where length variance within a 32-wide SIMD group was apparently large enough to cause real divergence stalls (short-sequence threads idling while the longest sequence in their group finishes). At 750 and 5,000 the effect is smaller/flat, consistent with fixed per-dispatch overhead still dominating at that scale rather than compute-time divergence.
+
+**Post-binning query-length re-measurement (target Mac, 2026-07-27), DB = pinned 750-sequence corpus, 15 measured iterations each:**
+
+| Query length | GPU GCUPS pre-binning | GPU GCUPS post-binning | Change |
+|---|---|---|---|
+| 60 | 0.337 ± 0.0088 | 0.431 ± 0.0025 | +28% |
+| 142 (hemoglobin) | 0.349 ± 0.0017 | 0.407 ± 0.0075 | +17% |
+| 256 | 0.305 ± 0.0006 | 0.350 ± 0.0171 | +15% |
+| 502 | 0.266 ± 0.0059 | 0.314 ± 0.0010 | +18% |
+
+Binning helps consistently across all query lengths at this DB size (750 sequences), not just the largest corpora — the SIMD-divergence mechanism applies regardless of query length since it depends on DB sequence length variance within a threadgroup.
 
 **Gate:** benchmark table complete and reproducible from a documented recipe (not "trust me, I ran it once")
 
