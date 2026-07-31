@@ -32,15 +32,15 @@ jobs:
 
       - name: Run CPU Oracle Tests
         run: |
-          ./build/metalsw_baseline data/query.fasta data/db_small.fasta 10
+          cd build && ./metalsw_baseline ../data/query.fasta ../data/db_small.fasta 10
 
       - name: Run GPU Tests
         run: |
-          ./build/metalsw_gpu data/query.fasta data/db_small.fasta 10
+          cd build && ./metalsw_gpu ../data/query.fasta ../data/db_small.fasta 10
 
       - name: Run Benchmarks (Quick)
         run: |
-          ./build/metalsw_bench data/query.fasta data/db_small.fasta 3
+          cd build && ./metalsw_bench ../data/query.fasta ../data/db_small.fasta 3
         timeout-minutes: 10
 
       - name: Upload Benchmark Artifacts
