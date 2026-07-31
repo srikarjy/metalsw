@@ -6,7 +6,9 @@
 
 #include "blosum62.hpp"
 
-int main() {
+int
+main()
+{
     using namespace metalsw;
 
     const std::string queries[] = {
@@ -17,19 +19,27 @@ int main() {
     };
 
     int failures = 0;
-    int checks = 0;
-    for (const auto &query : queries) {
+    int checks   = 0;
+    for (const auto &query : queries)
+    {
         auto profile = buildQueryProfile(query);
-        for (int r = 0; r < kAlphabetSize; ++r) {
+        for (int r = 0; r < kAlphabetSize; ++r)
+        {
             const char residueChar = kAlphabet[r];
-            for (size_t j = 0; j < query.size(); ++j) {
+            for (size_t j = 0; j < query.size(); ++j)
+            {
                 ++checks;
                 const int16_t expected = static_cast<int16_t>(blosumScore(residueChar, query[j]));
-                const int16_t actual = profile[static_cast<size_t>(r) * query.size() + j];
-                if (expected != actual) {
+                const int16_t actual   = profile[static_cast<size_t>(r) * query.size() + j];
+                if (expected != actual)
+                {
                     std::fprintf(stderr,
                                  "MISMATCH query=\"%s\" residue=%c pos=%zu expected=%d actual=%d\n",
-                                 query.c_str(), residueChar, j, expected, actual);
+                                 query.c_str(),
+                                 residueChar,
+                                 j,
+                                 expected,
+                                 actual);
                     ++failures;
                 }
             }
@@ -37,7 +47,8 @@ int main() {
     }
 
     std::fprintf(stderr, "%d checks, %d failures\n", checks, failures);
-    if (failures > 0) return 1;
+    if (failures > 0)
+        return 1;
     std::printf("PASS\n");
     return 0;
 }
