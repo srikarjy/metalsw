@@ -1,0 +1,178 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-macos:
+    name: Build and Test on macOS (Metal)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install CMake
+        run: |
+          brew install cmake
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build -j --config Release
+
+      - name: Run CPU Oracle Tests
+        run: |
+          ./build/metalsw_baseline data/query.fasta data/db_small.fasta 10
+
+      - name: Run GPU Tests
+        run: |
+          ./build/metalsw_gpu data/query.fasta data/db_small.fasta 10
+
+      - name: Run Benchmarks (Quick)
+        run: |
+          ./build/metalsw_bench data/query.fasta data/db_small.fasta 3
+        timeout-minutes: 10
+
+      - name: Upload Benchmark Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-macos
+          path: build/results/
+          retention-days: 7
+
+  build-linux:
+    name: Build and Test on Linux (CPU Only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++
+
+      - name: Configure CMake (CPU Only)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build CPU Targets
+        run: |
+          cmake --build build -j --config Release --target metalsw_baseline test_query_profile
+
+      - name: Run CPU Oracle Tests
+        run: |
+          ./build/metalsw_baseline data/query.fasta data/db_small.fasta 10
+
+      - name: Run Query Profile Tests
+        run: |
+          ./build/test_query_profile
+
+  build-linux-parasail:
+    name: Build with Parasail on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libparasail-dev
+
+      - name: Configure CMake with Parasail
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMETALSW_USE_PARASAIL=ON
+
+      - name: Build All Targets
+        run: |
+          cmake --build build -j --config Release
+
+      - name: Run CPU Oracle Tests with Parasail Cross-Check
+        run: |
+          ./build/metalsw_baseline data/query.fasta data/db_small.fasta 10
+
+      - name: Run Parasail Benchmark
+        run: |
+          ./build/metalsw_parasail_bench data/query.fasta data/db_small.fasta 3
+        timeout-minutes: 10
+
+      - name: Upload Benchmark Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-linux-parasail
+          path: build/results/
+          retention-days: 7
+
+  format-check:
+    name: Code Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-15
+
+      - name: Check C++ Format
+        run: |
+          find . -name "*.cpp" -o -name "*.hpp" -o -name "*.h" | grep -v build | grep -v .git | xargs clang-format-15 --dry-run --Werror
+
+      - name: Check Metal Format
+        run: |
+          find . -name "*.metal" | grep -v build | grep -v .git | xargs clang-format-15 --dry-run --Werror
+
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-15
+
+      - name: Run clang-tidy on C++ Files
+        run: |
+          find . -name "*.cpp" | grep -v build | grep -v .git | xargs clang-tidy-15 -checks='modernize-*,performance-*,readability-*,bugprone-*,-modernize-use-trailing-return-type' -- -std=c++17 -Iinclude 2>&1 | head -100
+
+  release:
+    name: Create Release
+    needs: [build-macos, build-linux, build-linux-parasail, format-check, static-analysis]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          files: |
+            README.md
+            LICENSE
