@@ -117,4 +117,10 @@ if(APPLE)
     add_custom_command(TARGET test_wavefront POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${METAL_LIB} $<TARGET_FILE_DIR:test_wavefront>/smith_waterman.metallib
     )
+
+    add_executable(test_traceback
+        src/test_traceback.cpp
+        src/sw_reference.cpp
+    )
+    target_include_directories(test_traceback PRIVATE include)
 endif()
