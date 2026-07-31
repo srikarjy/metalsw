@@ -99,4 +99,22 @@ if(APPLE)
     add_custom_command(TARGET metalsw_bench POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy ${METAL_LIB} $<TARGET_FILE_DIR:metalsw_bench>/smith_waterman.metallib
     )
+
+    add_executable(test_wavefront
+        src/test_wavefront.cpp
+        src/metal_runtime.cpp
+        src/fasta.cpp
+        src/sw_reference.cpp
+    )
+    target_include_directories(test_wavefront PRIVATE include ${metal-cpp_SOURCE_DIR})
+    target_link_libraries(test_wavefront PRIVATE
+        "-framework Metal"
+        "-framework Foundation"
+        "-framework QuartzCore"
+    )
+    add_dependencies(test_wavefront metalsw_shaders)
+
+    add_custom_command(TARGET test_wavefront POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy ${METAL_LIB} $<TARGET_FILE_DIR:test_wavefront>/smith_waterman.metallib
+    )
 endif()

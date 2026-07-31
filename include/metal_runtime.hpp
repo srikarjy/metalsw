@@ -24,6 +24,12 @@ public:
     std::vector<int> run(const std::string &query, const std::vector<FastaRecord> &dbRecords,
                           int gapOpen, int gapExtend);
 
+    // Runs the wavefront (anti-diagonal) Smith-Waterman kernel.
+    // One threadgroup per database sequence, 32 threads cooperating.
+    // Returns one score per entry in dbRecords, same order.
+    std::vector<int> runWavefront(const std::string &query, const std::vector<FastaRecord> &dbRecords,
+                                   int gapOpen, int gapExtend);
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
