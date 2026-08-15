@@ -1,11 +1,13 @@
 # cuda2metal
 
-**About:** cuda2metal converts a defined subset of CUDA C GPU kernels into Metal
-Shading Language (MSL), so kernels written for NVIDIA GPUs (like the ones in
+## About
+
+cuda2metal converts a defined subset of CUDA C GPU kernels into Metal Shading
+Language (MSL), so kernels written for NVIDIA GPUs (like the ones in
 Karpathy's [llm.c](https://github.com/karpathy/llm.c)) can run on Apple
 Silicon. Every claim it makes about a kernel "working" is backed by actually
-compiling the output with Apple's own Metal compiler — not just a plausible-looking
-text rewrite.
+compiling the output with Apple's own Metal compiler — not just a
+plausible-looking text rewrite.
 
 ## The problem this solves
 
