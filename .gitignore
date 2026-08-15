@@ -1,3 +1,6 @@
 build/
 build_mac/
+build_parasail/
+build_v1/
 *.o
+.DS_Store
