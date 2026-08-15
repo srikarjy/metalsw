@@ -4,3 +4,5 @@ build_parasail/
 build_v1/
 *.o
 .DS_Store
+__pycache__/
+*.pyc
